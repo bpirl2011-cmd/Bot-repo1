@@ -1,48 +1,52 @@
 import os
 import discord
 from discord.ext import commands
-from flask import Flask, request, jsonify
+from flask import Flask, jsonify, request
 import threading
 
-# 1. Setup the Web Server to Listen to Roblox
+# 1. Setup Command Queue Pipeline
 app = Flask('')
-bot_client = None  # To hold the bot instance safely
+current_command = "none"
+target_argument = ""
 
 @app.route('/')
-def home():
-    return "Chat Logger is Active!"
+def home(): 
+    return "Command Router Active"
 
-@app.route('/log', methods=['POST'])
-def log_chat():
-    data = request.json
-    player = data.get("player")
-    message = data.get("message")
-    channel_id = int(os.environ.get("CHANNEL_ID", 0)) # Set your channel ID in Render settings
-    
-    if bot_client and channel_id:
-        channel = bot_client.get_channel(channel_id)
-        if channel:
-            # Sends message cleanly to your Discord server
-            bot_client.loop.create_task(channel.send(f"💬 **{player}**: {message}"))
-            return jsonify({"status": "success"}), 200
-    return jsonify({"status": "failed"}), 400
+# Roblox calls this endpoint to check if Discord sent a command
+@app.route('/getcommand', methods=['GET'])
+def get_command():
+    global current_command, target_argument
+    data = {"command": current_command, "arg": target_argument}
+    current_command = "none" # Reset command after Roblox reads it
+    target_argument = ""
+    return jsonify(data)
 
-def run_web_server():
-    port = int(os.environ.get("PORT", 10000))
-    app.run(host='0.0.0.0', port=port)
+def run(): 
+    app.run(host='0.0.0.0', port=int(os.environ.get("PORT", 10000)))
+threading.Thread(target=run).start()
 
-threading.Thread(target=run_web_server).start()
-
-# 2. Discord Bot System
+# 2. Discord Bot Engine
 intents = discord.Intents.default()
 intents.message_content = True
 bot = commands.Bot(command_prefix="!", intents=intents)
 
 @bot.event
 async def on_ready():
-    global bot_client
-    bot_client = bot
-    print(f"Chat Logger Bot is Online as {bot.user.name}")
+    print(f"Command Router Online as {bot.user.name}")
+
+@bot.command()
+async def rejoin(ctx):
+    global current_command
+    current_command = "rejoin"
+    await ctx.send("🔄 Sending Rejoin command to Roblox...")
+
+@bot.command()
+async def Goto(ctx, name: str):
+    global current_command, target_argument
+    current_command = "goto"
+    target_argument = name
+    await ctx.send(f"🚀 Teleporting bot to player: **{name}**")
 
 token = os.environ.get("DISCORD_TOKEN")
 bot.run(token)
